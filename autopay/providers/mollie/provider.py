@@ -358,7 +358,7 @@ class MollieAutopayProvider(AutopayProvider):
 
     # -- capability: refresh_method + confirm_refresh ---------------------
 
-    def refresh_method(self, saved_method: SavedMethod, currency: str = "EUR", description: str = "", amount: str = "0.01") -> RefreshSetupData:
+    def refresh_method(self, saved_method: SavedMethod, currency: str = "EUR", description: str = "", amount: str | None = None) -> RefreshSetupData:
         """Mollie: new first payment → new mandate.
 
         Args:
@@ -379,6 +379,9 @@ class MollieAutopayProvider(AutopayProvider):
         # Default description if not provided
         if not description:
             description = "Mandate verification"
+
+        if amount is None:
+            amount = "0.00" if saved_method.method_type == "card" else "0.01"
 
         payload = {
             "amount": {"currency": currency, "value": amount},

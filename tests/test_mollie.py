@@ -341,6 +341,29 @@ class TestMollieRefreshMethod:
         assert call_args["amount"] == {"currency": "EUR", "value": "0.01"}
         assert call_args["customerId"] == "cus_123"
 
+    @override_settings(AUTOPAY_SITE_BASE_URL="https://example.com")
+    def test_refresh_method_default_amount_by_method_type(self, mollie_provider, mollie_client_mock):
+        """Card mandates default to 0.00 zero-auth; other methods to 0.01."""
+        mollie_client_mock.payments.create.return_value = MagicMock(
+            id="tr_am", checkout_url="https://checkout.mollie.com/tr_am"
+        )
+
+        card_method = MagicMock()
+        card_method.id = 42
+        card_method.gateway_customer_id = "cus_123"
+        card_method.method_type = "card"
+        mollie_provider.refresh_method(card_method)
+        call_args = mollie_client_mock.payments.create.call_args[0][0]
+        assert call_args["amount"] == {"currency": "EUR", "value": "0.00"}
+
+        sepa_method = MagicMock()
+        sepa_method.id = 43
+        sepa_method.gateway_customer_id = "cus_123"
+        sepa_method.method_type = "sepa"
+        mollie_provider.refresh_method(sepa_method)
+        call_args = mollie_client_mock.payments.create.call_args[0][0]
+        assert call_args["amount"] == {"currency": "EUR", "value": "0.01"}
+
     def test_confirm_refresh_success(self, mollie_provider, mollie_client_mock):
         """Test that confirm_refresh returns new SavedMethod."""
         # Mock first payment

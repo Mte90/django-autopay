@@ -4,6 +4,8 @@ Recurring / off-session charge extension for [django-payments](https://django-pa
 
 Documentation: https://django-autopay.readthedocs.io/en/latest/
 
+Example: [Run the interactive demo app](https://django-autopay.readthedocs.io/en/latest/quickstart.html#run-the-demo-app)
+
 **Status: work in progress (0.1.0).** APIs are not stable yet.
 
 ## Quick Start
