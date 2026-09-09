@@ -152,7 +152,7 @@ class Payments:
 
     @staticmethod
     def refresh_method(saved_method: SavedMethodProtocol, reason: str = "manual") -> RefreshSetup:
-        """Start a refresh of the token/mandate. Persistence in facade (§9.5bis)."""
+        """Start a refresh of the token/mandate. Persistence in facade."""
         provider = provider_factory(saved_method.gateway)
         if not is_autopay_capable(provider):
             raise AutopayCapabilityError(

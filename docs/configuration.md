@@ -126,7 +126,7 @@ Optional override for the model used to persist saved payment methods. Value is 
 AUTOPAY_SAVED_METHOD_MODEL = "myapp.CustomSavedMethod"
 ```
 
-A custom model must provide the same fields the facade and the API rely on (user, gateway, gateway method id, token data — see [Models](models.md)). Most projects should leave this unset.
+A custom model must provide the same fields the facade and the API rely on (user, gateway, gateway method id, token data — see [Models](models.md)) and the `as_saved_method()` method returning the `SavedMethod` value object — every facade path and API handler calls it. Most projects should leave this unset.
 
 ## Django-payments Settings
 

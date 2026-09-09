@@ -211,10 +211,9 @@ result = Payments.process_webhook("mollie", raw_body, headers, "application/x-ww
 ### Choosing a webhook endpoint
 
 Use the Django view (`autopay/core/views.py`) when:
-- `AUTOPAY_MOLLIE_ALLOWED_IPS` is set — the view supplies `request.META["REMOTE_ADDR"]` for the fail-closed IP allowlist
-- Your provider posts form-encoded bodies (Mollie)
+- `AUTOPAY_MOLLIE_ALLOWED_IPS` is set — the view supplies `request.META["REMOTE_ADDR"]` for the fail-closed IP allowlist (required for Mollie, whose verification is fail-closed)
 
-The bolt endpoint (`/autopay/api/webhooks/{variant}/`) is a JSON-only adapter that cannot supply a client IP address. Use it only for providers that send JSON bodies and support signature verification.
+The bolt endpoint (`/autopay/api/webhooks/{variant}/`) forwards the raw body and content type, so JSON and form-encoded providers both work through it — but django-bolt exposes no client IP, so the IP allowlist cannot run there.
 
 ## Error Handling
 

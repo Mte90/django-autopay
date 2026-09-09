@@ -114,7 +114,7 @@ Body: `CreateMethodIn`
 }
 ```
 
-  **Note:** `payment_token` is the `Payment` primary key as a string (`payment.id` from the checkout process), not a gateway-side token. The facade fetches `Payment.objects.aget(id=int(body.payment_token))` and extracts the gateway token from that payment object.
+  **Note:** `payment_token` is the `Payment` primary key as a string (`payment.id` from the checkout process), not a gateway-side token. The facade fetches `Payment.objects.aget(id=body.payment_token)` and extracts the gateway token from that payment object.
 
 **Response:** `CreateMethodOut`
 
@@ -309,7 +309,7 @@ The cardholder-facing confirm endpoint (`GET .../refresh/confirm/`) is issued wi
 /autopay/api/methods/{method_id}/refresh/confirm/?attempt={attempt_id}&sig={hmac}&first_payment_id={id}
 ```
 
-The `sig` parameter is an HMAC-SHA256 of `"{attempt_id}:{method_id}"` using `AUTOPAY_WEBHOOK_SECRET`. Mismatching signatures return `200` with `RefreshStatusOut(success=False, method_id=None, error="invalid signature")` — **not HTTP 403**.
+The `sig` parameter is an HMAC-SHA256 of `"{attempt_id}:{method_id}"` using `AUTOPAY_WEBHOOK_SECRET`. Mismatching signatures return `200` with `RefreshStatusOut(success=False, method_id=None, error="invalid signature")` — **not HTTP 403**. When `AUTOPAY_WEBHOOK_SECRET` is configured, `attempt` and a valid `sig` are **mandatory**: a call with no `attempt` (or an incomplete signature) returns the same `invalid signature` body. Without a secret, unsigned calls remain allowed (development mode).
 
 The `first_payment_id` query parameter is optional (used for Mollie redirects to initiate the first payment after refresh confirmation).
 
@@ -372,7 +372,7 @@ See `tests/test_api_http.py` for working examples against every endpoint.
 **Failure response bodies:**
 
 - **Resource not found:** `ChargeOut(status="failed", message="<resource> not found")` or `RefreshStatusOut(success=False, method_id=None, error="<reason>")`
-- **Signature failure (GET refresh confirm):** `RefreshStatusOut(success=False, method_id=None, error="invalid signature")`
+- **Signature failure or unsigned call when `AUTOPAY_WEBHOOK_SECRET` is set (GET refresh confirm):** `RefreshStatusOut(success=False, method_id=None, error="invalid signature")`
 - **Webhook signature failure:** `WebhookReceiverOut(processed=False, ...)`
 - **Validation error:** `ChargeOut(status="failed", message="<validation error>")`
 
@@ -400,7 +400,7 @@ def save_method(payment) -> SavedMethod | None
 2. `payment.user` is `None`
 3. The provider's `save_method` returned `None`
 
-**Important:** The return is a value object. Persist `saved_method.id` on FK fields (e.g., `SavedPaymentMethod.gateway_method_id = saved_method.id`).
+**Important:** The return is a value object. `save_method` already persists the `SavedPaymentMethod` row — `saved_method.id` is its primary key. Store that id on your own models' FKs (e.g., `my_model.saved_method_id = saved_method.id`).
 
 **Example:**
 ```python
@@ -578,7 +578,7 @@ if Payments.is_autopay_capable(provider):
     print("Gateway supports autopay")
 ```
 
-### charge_off_session(saved_method, amount, currency="EUR", description="", idempotency_key=None, metadata=None)
+### charge_off_session(saved_method, amount, currency, description="", idempotency_key=None, metadata=None)
 
 Executes an off-session charge using a saved payment method.
 
@@ -598,7 +598,7 @@ def charge_off_session(
 **Parameters:**
 - `saved_method`: The `SavedMethod` value object to charge
 - `amount`: Charge amount
-- `currency`: Currency code (default: "EUR")
+- `currency`: Currency code, ISO 4217 (required — no default)
 - `description`: Human-readable charge description
 - `idempotency_key`: Idempotency key for retry safety (optional)
 - `metadata`: Extra data to attach to the charge (optional)
@@ -688,24 +688,21 @@ def confirm_refresh(
 - `saved_method`: The `SavedMethod` value object being refreshed
 - `refresh_payload`: Provider-specific credentials dict. Keys depend on gateway:
   - Stripe: `{"setup_intent_id": "seti_..."}`
-  - PayPal: `{"setup_token_id": "token_...", "first_payment_id": "pay_..."}`
+  - PayPal: `{"setup_token_id": "tok_..."}` (exchanged for a permanent payment token; `first_payment_id` is a Mollie-only concept)
   - Mollie: `{"first_payment_id": "tr_..."}`
 
-**Returns:** `ConfirmRefreshOut` with success status and updated method data
+**Returns:** The updated `SavedMethod` value object (same PK, new gateway credentials persisted in place, `last_refreshed_at` stamped). HTTP-level success wrapping is the API layer's `ConfirmRefreshOut`, not this method.
 
 **Example:**
 ```python
 from autopay.core.facade import Payments
 
 result = Payments.confirm_refresh(
-    method_id=1,
-    attempt_id=42,
-    setup_intent_id="seti_123456"
+    saved_method,
+    {"setup_intent_id": "seti_123456"},
 )
-if result.success:
-    print(f"Refreshed method {result.method_id}")
-else:
-    print(f"Failed: {result.error}")
+saved_method_id = result.id  # same PK — update FKs stored on your side
+print(result.gateway_method_id, result.display_label)
 ```
 
 ### validate_method(saved_method)
