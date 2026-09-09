@@ -28,8 +28,8 @@ class AutopayProvider(BasicProvider):
     Providers that support charge-by-token override:
       - save_method(payment) -> SavedMethod
       - charge_off_session(saved_method, amount, ...) -> ChargeResult
-      - refresh_method(saved_method) -> RefreshSetupData  (gateway only; persistence in facade, §9.5bis)
-      - confirm_refresh(saved_method, refresh_payload) -> SavedMethod  (gateway only; persistence in facade, §9.5bis)
+      - refresh_method(saved_method) -> RefreshSetupData  (gateway only; persistence in facade)
+      - confirm_refresh(saved_method, refresh_payload) -> SavedMethod  (gateway only; persistence in facade)
       - validate_method(saved_method) -> ValidationResult  (no test charge)
       - list_saved_methods(customer_id) -> list[SavedMethod]
       - revoke_method(saved_method) -> None
@@ -107,7 +107,7 @@ class AutopayProvider(BasicProvider):
           - expires_at
 
         Persistence (RefreshAttempt) and return_url are in the facade
-        Payments.refresh_method (§9.5bis), which returns RefreshSetup.
+         Payments.refresh_method, which returns RefreshSetup.
         """
         if not self.SUPPORTS_REFRESH:
             raise NotImplementedError(f"{type(self).__name__} does not support token refresh")

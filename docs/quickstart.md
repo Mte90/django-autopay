@@ -146,5 +146,21 @@ elif result.status == ChargeStatus.REJECTED:
 ## Next Steps
 
 - Read [Configuration](configuration.md) for all settings
-- See the `example/` directory in the repository for a working demo app
 - Set up [Webhooks](webhooks.md) for async notifications
+- Run the demo app for a working end-to-end example
+
+## Run the Demo App
+
+The repository ships a runnable demo app under `example/` that showcases the
+full flow — save a payment method, charge off-session, receive webhooks. It
+includes the `DummyAutopayProvider`, so you can try everything without real
+gateway credentials.
+
+```bash
+./example/setup.sh
+uv run python example/manage.py runserver
+```
+
+`setup.sh` is idempotent: it applies migrations and creates a `demo` / `demo`
+superuser (the SQLite database stays local — it is gitignored). Then log in
+at `http://localhost:8000/accounts/login/`.

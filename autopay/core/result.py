@@ -35,7 +35,7 @@ class ChargeResult:
 class RefreshSetupData:
     """Returned by PROVIDER.refresh_method: gateway data only, no DB access.
 
-    Persistence (RefreshAttempt) is in the facade Payments.refresh_method (§9.5bis)."""
+    Persistence (RefreshAttempt) is in the facade Payments.refresh_method."""
 
     gateway_setup_id: str                  # setup_token_id / setup_intent_id / payment_id on gateway
     frontend_sdk: Literal["paypal", "stripe", "mollie", "adyen", ...]
@@ -45,7 +45,7 @@ class RefreshSetupData:
 
 @dataclass
 class RefreshSetup:
-    """Returned by FACADE Payments.refresh_method (§9.5bis)."""
+    """Returned by FACADE Payments.refresh_method."""
 
     setup_id: int                          # PK of RefreshAttempt (0 if models not installed)
     frontend_sdk: Literal["paypal", "stripe", "mollie", "adyen", ...]

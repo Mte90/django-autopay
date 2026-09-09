@@ -265,7 +265,7 @@ class TestRefreshMethod:
             },
             AUTOPAY_SITE_BASE_URL="https://example.com",
         ):
-            # None in sys.modules → ImportError al «from .models import RefreshAttempt» (§9.5bis)
+            # None in sys.modules → ImportError on «from .models import RefreshAttempt»
             monkeypatch.setitem(sys.modules, "autopay.core.models", None)
             result = Payments.refresh_method(saved_method=sm)
 

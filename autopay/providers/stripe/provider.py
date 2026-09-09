@@ -427,7 +427,7 @@ class StripeAutopayProvider(AutopayProvider, StripeProviderV3):
     def refresh_method(self, saved_method: SavedMethod, reason: str = "manual") -> RefreshSetupData:
         """Create a new SetupIntent for token refresh.
 
-        Only gateway calls: persistence in facade (§9.5bis).
+        Only gateway calls: persistence in facade.
         """
         from autopay.core.result import RefreshSetupData
 
@@ -454,7 +454,7 @@ class StripeAutopayProvider(AutopayProvider, StripeProviderV3):
     def confirm_refresh(self, saved_method: SavedMethod, refresh_payload: dict) -> SavedMethod:
         """Retrieve the PaymentMethod created by the SetupIntent and return updated data.
 
-        Persistenza in facade (§9.5bis).
+        Persistence in facade.
         """
         setup_intent_id = refresh_payload["setup_intent_id"]
         intent = self.stripe_client.v1.setup_intents.retrieve(setup_intent_id)

@@ -612,7 +612,7 @@ class PaypalAutopayProvider(AutopayProvider):
     def refresh_method(self, saved_method: SavedMethod) -> RefreshSetupData:
         """PayPal: new setup_token → user approves → new payment_token.
 
-        Only gateway calls: persistence is in the facade (§9.5bis).
+        Only gateway calls: persistence is in the facade.
         """
         # 1. Create setup token on PayPal
         body = {

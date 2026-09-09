@@ -370,7 +370,7 @@ class MollieAutopayProvider(AutopayProvider):
         For card mandates (sequenceType='first'), zero-amount authorizations are supported.
         For SEPA and other methods, use 0.01 to avoid rejection.
 
-        Only gateway calls: persistence is in the facade (§9.5bis).
+        Only gateway calls: persistence is in the facade.
         """
         from django.conf import settings
 
