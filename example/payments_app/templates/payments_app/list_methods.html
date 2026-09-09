@@ -1,0 +1,44 @@
+{% extends "payments_app/base.html" %}
+{% block title %}Saved Methods - AutoPay Demo{% endblock %}
+{% block content %}
+<h1>Saved Payment Methods</h1>
+
+{% if methods %}
+<div class="card">
+    <h2>Your Payment Instruments</h2>
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>Label</th>
+                    <th>Gateway</th>
+                    <th>Type</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for method in methods %}
+                <tr>
+                    <td><strong>{{ method.display_label }}</strong></td>
+                    <td>{{ method.gateway }}</td>
+                    <td>{{ method.method_type }}</td>
+                    <td>
+                        {% if method.is_active %}
+                        <span class="badge badge-success">Active</span>
+                        {% else %}
+                        <span class="badge badge-danger">Inactive</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% else %}
+<div class="card">
+    <p>You haven't saved any payment methods yet.</p>
+    <a href="{% url 'save_method' %}" class="btn btn-primary">Save Your First Method</a>
+</div>
+{% endif %}
+{% endblock %}

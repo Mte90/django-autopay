@@ -1,0 +1,21 @@
+{% extends "payments_app/base.html" %}
+{% block title %}Save Method - AutoPay Demo{% endblock %}
+{% block content %}
+<h1>Save Payment Method</h1>
+
+<div class="card">
+    <h2>Secure Your Payment Instrument</h2>
+    <p>This demonstration simulates the secure handover to a payment gateway. In a production environment, this would trigger a hosted payment page or an Elements-style integration to tokenise your card.</p>
+    
+    <div style="margin: 2rem 0; padding: 1.5rem; background: var(--bg-main); border-radius: var(--radius); border: 1px dashed var(--border-color);">
+        <p style="margin-bottom: 0; font-size: 0.875rem; text-align: center;">
+            <strong>Simulated Provider:</strong> <code style="color: var(--accent-primary);">DummyAutopayProvider</code>
+        </p>
+    </div>
+
+    <form method="post">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-primary" style="width: 100%; padding: 0.75rem;">Simulate Save Method</button>
+    </form>
+</div>
+{% endblock %}

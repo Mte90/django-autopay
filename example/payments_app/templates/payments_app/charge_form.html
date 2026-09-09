@@ -1,0 +1,30 @@
+{% extends "payments_app/base.html" %}
+{% block title %}Process Charge - AutoPay Demo{% endblock %}
+{% block content %}
+<h1>Charge a Saved Method</h1>
+
+{% if methods %}
+<div class="card">
+    <h2>Recurring Payment Trigger</h2>
+    <p>This operation simulates an off-session charge. The system will attempt to bill the first available payment instrument without requiring user interaction.</p>
+    
+    <div style="background: #f1f5f9; padding: 1rem; border-radius: var(--radius); margin-bottom: 1.5rem; display: flex; align-items: center; gap: 1rem;">
+        <div style="font-size: 1.5rem;">💰</div>
+        <div>
+            <div style="font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase;">Amount to Charge</div>
+            <div style="font-size: 1.25rem; font-weight: bold;">€10.00 <span style="font-size: 0.875rem; font-weight: normal;">EUR</span></div>
+        </div>
+    </div>
+
+    <form method="post">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-primary" style="width: 100%; padding: 0.75rem;">Charge First Saved Method</button>
+    </form>
+</div>
+{% else %}
+<div class="card">
+    <p>No saved payment methods found. You must save a payment method before you can process a charge.</p>
+    <a href="{% url 'save_method' %}" class="btn btn-primary">Save a Method Now</a>
+</div>
+{% endif %}
+{% endblock %}

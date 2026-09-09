@@ -1,0 +1,39 @@
+site_name: django-autopay
+site_description: Recurring / off-session charge extension for django-payments
+repo_url: https://github.com/Mte90/django-autopay
+theme: readthedocs
+
+hooks:
+  - docs/hooks.py
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [.]
+          options:
+            show_source: false
+            show_root_heading: true
+            show_signature_annotations: true
+            merge_init_into_class: true
+            show_if_no_docstring: true
+
+nav:
+  - Home: index.md
+  - Quick Start: quickstart.md
+  - Configuration: configuration.md
+  - API: api.md
+  - Reference: reference.md
+  - Models: models.md
+  - Webhooks: webhooks.md
+  - Refresh flows: refresh.md
+  - Providers:
+      - PayPal: providers/paypal.md
+      - Stripe: providers/stripe.md
+      - Mollie: providers/mollie.md
+      - Extending: providers/extending.md
+  - Examples:
+      - SaaS subscription: examples/saas_subscription.md
+      - Utility billing: examples/utility_billing.md
+      - Pay-as-you-go: examples/pay_as_you_go.md

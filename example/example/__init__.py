@@ -1,0 +1,1 @@
+"""Django example project for django-autopay demo."""

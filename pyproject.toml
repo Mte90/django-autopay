@@ -1,0 +1,74 @@
+[project]
+name = "django-autopay"
+version = "0.1.0"
+description = "Recurring / off-session charge extension for django-payments"
+readme = "README.md"
+license = "MIT"
+authors = [{ name = "django-autopay contributors" }]
+requires-python = ">=3.10"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Web Environment",
+    "Framework :: Django",
+    "Framework :: Django :: 5.2",
+    "Framework :: Django :: 6.1",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Office/Business :: Financial",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+keywords = ["django", "payments", "recurring-billing", "off-session", "stripe", "paypal", "mollie"]
+dependencies = [
+    "django-payments>=4.0",
+    "Django>=5.2",
+]
+
+[project.optional-dependencies]
+paypal = ["requests>=2.31"]
+api = ['django-bolt>=0.4; python_version >= "3.12"']
+mollie = ["mollie-api-python>=4.0", "django-payments-mollie>=0.0.1"]
+stripe = ["stripe>=8.0"]
+dev = ["pytest", "pytest-asyncio", "pytest-django", "responses", "freezegun", "ruff", "pytest-cov", "mkdocs>=1.6", "mkdocstrings[python]>=0.26"]
+all = ["requests>=2.31", "mollie-api-python>=4.0", "django-payments-mollie>=0.0.1", "stripe>=8.0", 'django-bolt>=0.4; python_version >= "3.12"']
+
+[project.urls]
+Homepage = "https://github.com/Mte90/django-autopay"
+Documentation = "https://github.com/Mte90/django-autopay#readme"
+Repository = "https://github.com/Mte90/django-autopay"
+Issues = "https://github.com/Mte90/django-autopay/issues"
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["autopay*"]
+
+[tool.setuptools.package-data]
+autopay = ["py.typed"]
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "tests.settings"
+python_files = ["test_*.py"]
+testpaths = ["tests"]
+pythonpath = "."
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+extend-exclude = ["autopay/migrations", "example"]
+
+[tool.coverage.run]
+source = ["autopay"]
+branch = true
+
+[tool.coverage.report]
+fail_under = 100
+show_missing = true

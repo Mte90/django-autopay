@@ -1,0 +1,45 @@
+{% extends "payments_app/base.html" %}
+{% block title %}Log In - AutoPay Demo{% endblock %}
+{% block content %}
+<div style="max-width: 400px; margin: 0 auto;">
+    <h1 style="text-align: center;">Log In</h1>
+
+    {% if form.errors %}
+    <div class="card" style="border-left: 4px solid var(--danger); color: var(--danger); font-size: 0.875rem; margin-bottom: 1rem;">
+        <strong>Authentication Failed:</strong> Invalid username or password.
+    </div>
+    {% endif %}
+
+    <form method="post" class="card">
+        {% csrf_token %}
+        <div class="form-group">
+            <label for="id_username">Username</label>
+            {{ form.username }}
+        </div>
+        <div class="form-group">
+            <label for="id_password">Password</label>
+            {{ form.password }}
+        </div>
+        <input type="hidden" name="next" value="{{ next }}">
+        <button type="submit" class="btn btn-primary" style="width: 100%; padding: 0.75rem; margin-top: 1rem;">Sign In</button>
+    </form>
+
+    <div class="card" style="background: #eff6ff; border-color: #bfdbfe; font-size: 0.875rem;">
+        <p style="margin-bottom: 0;">
+            <strong>Demo Hint:</strong> Use a superuser account created via:
+            <br><code style="display: block; margin-top: 0.5rem; padding: 0.5rem; background: white; border: 1px solid #dbeafe; border-radius: 4px;">python manage.py createsuperuser</code>
+        </p>
+    </div>
+</div>
+
+<style>
+    /* Override form fields for registration/login which are rendered by Django */
+    input[type="text"], input[type="password"], input[type="email"] {
+        width: 100%;
+        padding: 0.625rem;
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius);
+        font-size: 0.875rem;
+    }
+</style>
+{% endblock %}

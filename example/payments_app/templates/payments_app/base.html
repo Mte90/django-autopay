@@ -1,0 +1,38 @@
+{% load static %}<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}django-autopay Demo{% endblock %}</title>
+    <link rel="stylesheet" href="{% static 'css/style.css' %}">
+</head>
+<body>
+    <nav>
+        <div class="nav-content">
+            <a href="{% url 'home' %}" style="color: white; font-weight: bold; text-decoration: none; font-size: 1.2rem;">AutoPay</a>
+            <div class="nav-links">
+                <a href="{% url 'home' %}">Home</a>
+                <a href="{% url 'list_methods' %}">Saved Methods</a>
+                <a href="{% url 'save_method' %}">Save Method</a>
+                <a href="{% url 'charge_saved_method' %}">Charge</a>
+                {% if user.is_authenticated %}
+                <form method="post" action="{% url 'logout' %}" style="display:inline">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-outline" style="color: #cbd5e1; border-color: #334155; margin-left: 1.5rem; background: transparent;">Log out</button>
+                </form>
+                {% else %}
+                <a href="{% url 'login' %}">Log in</a>
+                {% endif %}
+            </div>
+        </div>
+    </nav>
+
+    <div class="container">
+        <main class="fade-in">
+            {% block content %}{% endblock %}
+        </main>
+    </div>
+
+    <script src="{% static 'js/main.js' %}"></script>
+</body>
+</html>

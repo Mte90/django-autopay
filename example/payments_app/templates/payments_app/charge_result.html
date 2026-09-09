@@ -1,0 +1,24 @@
+{% extends "payments_app/base.html" %}
+{% block title %}Transaction Result - AutoPay Demo{% endblock %}
+{% block content %}
+<h1>Transaction Result</h1>
+
+<div class="card" style="text-align: center; border-top: 5px solid {% if result.status == 'success' %}var(--success){% else %}var(--danger){% endif %};">
+    <div style="font-size: 3rem; margin-bottom: 1rem;">
+        {% if result.status == 'success' %}✅{% else %}❌{% endif %}
+    </div>
+    <h2 style="margin-bottom: 0.5rem;">Payment {{ result.status|title }}</h2>
+    <p>{{ result.message|default:"The transaction was processed by the gateway provider." }}</p>
+    
+    {% if result.transaction_id %}
+    <div style="background: var(--bg-main); padding: 0.75rem; border-radius: var(--radius); font-family: monospace; font-size: 0.875rem; margin: 1.5rem 0; border: 1px solid var(--border-color);">
+        Transaction ID: {{ result.transaction_id }}
+    </div>
+    {% endif %}
+
+    <div style="display: flex; justify-content: center; gap: 1rem; margin-top: 2rem;">
+        <a href="{% url 'charge_saved_method' %}" class="btn btn-outline">Charge Again</a>
+        <a href="{% url 'list_methods' %}" class="btn btn-primary">Back to Methods</a>
+    </div>
+</div>
+{% endblock %}

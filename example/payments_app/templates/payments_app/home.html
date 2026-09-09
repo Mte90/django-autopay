@@ -1,0 +1,33 @@
+{% extends "payments_app/base.html" %}
+{% block title %}Home - AutoPay Demo{% endblock %}
+{% block content %}
+<h1>Welcome to AutoPay</h1>
+<p>Experience seamless recurring and off-session payment processing.</p>
+
+<div class="card">
+    <h2>Getting Started</h2>
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1rem; margin-top: 1rem;">
+        <div class="card" style="margin-bottom: 0; border-left: 4px solid var(--accent-primary);">
+            <h3>1. Save Method</h3>
+            <p>Simulate securely saving a payment card to a user profile.</p>
+            <a href="{% url 'save_method' %}" class="btn btn-primary">Save Card</a>
+        </div>
+        <div class="card" style="margin-bottom: 0; border-left: 4px solid var(--accent-primary);">
+            <h3>2. Manage Methods</h3>
+            <p>Review and manage all stored payment instruments.</p>
+            <a href="{% url 'list_methods' %}" class="btn btn-outline">View Methods</a>
+        </div>
+        <div class="card" style="margin-bottom: 0; border-left: 4px solid var(--accent-primary);">
+            <h3>3. Process Charge</h3>
+            <p>Trigger an off-session recurring charge using a saved method.</p>
+            <a href="{% url 'charge_saved_method' %}" class="btn btn-outline">Process Charge</a>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <h2>Technical Overview</h2>
+    <p>This demo utilizes the <code>DummyAutopayProvider</code> to simulate full payment lifecycles without external API calls. 
+    The architecture is designed to be provider-agnostic, supporting PayPal, Stripe, and Mollie in production environments.</p>
+</div>
+{% endblock %}
