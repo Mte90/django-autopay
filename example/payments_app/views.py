@@ -1,8 +1,9 @@
 """Views for django-autopay demo."""
 from decimal import Decimal
 
+from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.http import HttpRequest, HttpResponse, JsonResponse
+from django.http import HttpRequest, HttpResponse
 from django.shortcuts import redirect, render
 
 from autopay.core.facade import Payments
@@ -38,6 +39,7 @@ def save_method(request: HttpRequest) -> HttpResponse:
                 "metadata": {"brand": "visa", "last4": "1234"},
             },
         )
+        messages.success(request, "Payment method saved successfully.")
         return redirect("list_methods")
 
     return render(request, "payments_app/save_method.html")
@@ -50,9 +52,8 @@ def charge_saved_method(request: HttpRequest) -> HttpResponse:
         # Get the first active method for demo
         methods = Payments.list_saved_methods(request.user)
         if not methods:
-            return JsonResponse(
-                {"error": "No saved payment methods found"}, status=400
-            )
+            messages.error(request, "No saved payment methods found. Please save a method first.")
+            return redirect("list_methods")
 
         method = methods[0]
 

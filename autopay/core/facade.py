@@ -57,7 +57,9 @@ class Payments:
         Returns the SavedMethod value object, or None if the provider is
         not autopay-capable or the payment has no associated user.
         """
-        from .models import SavedPaymentMethod
+        from .models import _get_saved_method_model
+
+        SavedPaymentMethod = _get_saved_method_model()
 
         if payment.user_id is None:
             return None
@@ -87,9 +89,10 @@ class Payments:
         revoked on the gateway use `Payments.sync_saved_methods(user)` from job
         periodically — never from a sync view (one API call per gateway).
         """
-        from .models import SavedPaymentMethod  # optional, if user uses our model
+        from .models import _get_saved_method_model
 
-        return [sm.as_saved_method() for sm in SavedPaymentMethod.objects.filter(user=user, is_active=True)]
+        model = _get_saved_method_model()
+        return [sm.as_saved_method() for sm in model.objects.filter(user=user, is_active=True)]
 
     @staticmethod
     def sync_saved_methods(user) -> list[SavedMethodProtocol]:
@@ -97,7 +100,9 @@ class Payments:
         that the gateway no longer exposes (revoked by the user on the gateway).
         One API call per configured gateway: from scheduled job (Celery).
         """
-        from .models import SavedPaymentMethod
+        from .models import _get_saved_method_model
+
+        SavedPaymentMethod = _get_saved_method_model()
 
         methods: list[SavedMethodProtocol] = []
         for variant_name in getattr(settings, "PAYMENT_VARIANTS", {}):
@@ -235,12 +240,15 @@ class Payments:
         try:
             from django.utils import timezone as tz
 
-            from .models import SavedPaymentMethod
+            from .models import _get_saved_method_model
+
+            SavedPaymentMethod = _get_saved_method_model()
 
             SavedPaymentMethod.objects.filter(pk=updated.id).update(
                 gateway_method_id=updated.gateway_method_id,
                 display_label=updated.display_label,
                 metadata=updated.metadata,
+                last_refreshed_at=tz.now(),
             )
         except ImportError:
             pass
@@ -283,7 +291,9 @@ class Payments:
         Useful for periodic jobs that update the health status of methods.
         Returns a list of tuples (saved_method_id, ValidationResult).
         """
-        from .models import SavedPaymentMethod  # opzionale
+        from .models import _get_saved_method_model
+
+        SavedPaymentMethod = _get_saved_method_model()
 
         results: list[tuple[int, ValidationResult]] = []
         for sm in SavedPaymentMethod.objects.filter(user=user, is_active=True):
@@ -493,9 +503,9 @@ def _get_customer_id_for(user, variant_name: str) -> str | None:
         return import_string(lookup)(user, variant_name)
     # default: search in SavedPaymentMethod of the package
     try:
-        from .models import SavedPaymentMethod
+        from .models import _get_saved_method_model
 
-        m = SavedPaymentMethod.objects.filter(
+        m = _get_saved_method_model().objects.filter(
             user=user, gateway=variant_name, is_active=True
         ).first()
         return m.gateway_customer_id if m else None
@@ -537,7 +547,9 @@ def _apply_webhook_action(result: "WebhookEventResult") -> None:
     The provider may have already applied the actions in process_webhook_event,
     this is a hook for additional actions at the facade level.
     """
-    from .models import ChargeRecord, SavedPaymentMethod
+    from .models import ChargeRecord, _get_saved_method_model
+
+    SavedPaymentMethod = _get_saved_method_model()
 
     if result.action == "revoke_method" and result.transaction_id:
         # Revoke the saved method

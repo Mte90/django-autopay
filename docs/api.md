@@ -110,11 +110,11 @@ Body: `CreateMethodIn`
 ```json
 {
   "gateway": "stripe",
-  "payment_token": 123
+  "payment_token": "123"
 }
 ```
 
-**Note:** `payment_token` is the `Payment` primary key (integer `payment.id` from the checkout process), not a gateway-side token. The facade fetches `Payment.objects.aget(id=body.payment_token)` and extracts the gateway token from that payment object.
+  **Note:** `payment_token` is the `Payment` primary key as a string (`payment.id` from the checkout process), not a gateway-side token. The facade fetches `Payment.objects.aget(id=int(body.payment_token))` and extracts the gateway token from that payment object.
 
 **Response:** `CreateMethodOut`
 
@@ -287,7 +287,7 @@ Body: `ChargeIn`
 
 **Request:** `POST /autopay/api/webhooks/{variant}/`
 
-Body: Gateway-specific webhook payload (JSON or form-encoded)
+Body: Gateway-specific webhook payload (JSON or form-encoded; the facade parses by content type). Use the Django webhook view in `autopay/core/views.py` instead when `AUTOPAY_MOLLIE_ALLOWED_IPS` is set — this endpoint cannot supply the client IP required by the fail-closed allowlist.
 
 **Response:** `WebhookReceiverOut`
 
@@ -461,7 +461,7 @@ from .models import SavedPaymentMethod
 
 method = SavedPaymentMethod.objects.get(pk=method_id, user=user)
 Payments.revoke_method(method.as_saved_method())
-# Method is deactivated in the DB and revoked on the gateway
+# Method is revoked on the gateway. Facade-only callers must set `is_active=False` on the `SavedPaymentMethod` themselves.
 ```
 
 ### get_charge_status(gateway, transaction_id)
@@ -588,7 +588,7 @@ Executes an off-session charge using a saved payment method.
 def charge_off_session(
     saved_method: SavedMethod,
     amount: Decimal,
-    currency: str = "EUR",
+    currency: str,
     description: str = "",
     idempotency_key: str | None = None,
     metadata: dict | None = None
@@ -644,7 +644,7 @@ for method in methods:
     print(f"{method.display_label} ({method.gateway})")
 ```
 
-### refresh_method(saved_method, reason="manual", initiated_by=None)
+### refresh_method(saved_method, reason="manual")
 
 Starts a refresh flow for a saved payment method.
 
@@ -653,15 +653,13 @@ Starts a refresh flow for a saved payment method.
 @staticmethod
 def refresh_method(
     saved_method: SavedMethod,
-    reason: str = "manual",
-    initiated_by=None
+    reason: str = "manual"
 ) -> RefreshSetup
 ```
 
 **Parameters:**
 - `saved_method`: The `SavedMethod` value object to refresh
 - `reason`: Trigger reason ("expired_card", "revoked", "sca_required", "manual")
-- `initiated_by`: User who initiated the refresh (optional)
 
 **Returns:** `RefreshSetup` with gateway data for frontend SDK integration
 
@@ -673,7 +671,7 @@ setup = Payments.refresh_method(saved_method, reason="expired_card")
 print(f"Use {setup.frontend_sdk} with payload {setup.frontend_payload}")
 ```
 
-### confirm_refresh(method_id, attempt_id, setup_intent_id=None, setup_token_id=None, first_payment_id=None)
+### confirm_refresh(saved_method, refresh_payload)
 
 Confirms a refresh attempt with gateway credentials.
 
@@ -681,20 +679,17 @@ Confirms a refresh attempt with gateway credentials.
 ```python
 @staticmethod
 def confirm_refresh(
-    method_id: int,
-    attempt_id: int,
-    setup_intent_id: str | None = None,
-    setup_token_id: str | None = None,
-    first_payment_id: str | None = None
-) -> ConfirmRefreshOut
+    saved_method: SavedMethodProtocol,
+    refresh_payload: dict
+) -> SavedMethodProtocol
 ```
 
 **Parameters:**
-- `method_id`: The `SavedPaymentMethod` primary key
-- `attempt_id`: The `RefreshAttempt` primary key
-- `setup_intent_id`: Stripe setup intent ID (Stripe only)
-- `setup_token_id`: PayPal setup token ID (PayPal only)
-- `first_payment_id`: Mollie first payment ID (Mollie only)
+- `saved_method`: The `SavedMethod` value object being refreshed
+- `refresh_payload`: Provider-specific credentials dict. Keys depend on gateway:
+  - Stripe: `{"setup_intent_id": "seti_..."}`
+  - PayPal: `{"setup_token_id": "token_...", "first_payment_id": "pay_..."}`
+  - Mollie: `{"first_payment_id": "tr_..."}`
 
 **Returns:** `ConfirmRefreshOut` with success status and updated method data
 
@@ -737,7 +732,7 @@ if result.needs_refresh:
     print(f"Method needs refresh: {result.reason}")
 ```
 
-### process_webhook(variant, raw_body, headers=None, content_type="")
+### process_webhook(variant, raw_body, headers=None, content_type="", client_ip="")
 
 Processes a webhook event from a gateway.
 
@@ -747,8 +742,9 @@ Processes a webhook event from a gateway.
 def process_webhook(
     variant: str,
     raw_body: bytes,
-    headers: dict | None = None,
-    content_type: str = ""
+    headers: dict[str, str] | None = None,
+    content_type: str = "",
+    client_ip: str = ""
 ) -> WebhookEventResult
 ```
 
@@ -757,6 +753,7 @@ def process_webhook(
 - `raw_body`: Raw webhook payload bytes
 - `headers`: Request headers (for signature verification)
 - `content_type`: Content-Type header value (optional)
+- `client_ip`: Client IP address (from `request.META["REMOTE_ADDR"]`). Used by Mollie IP allowlist verification.
 
 **Returns:** `WebhookEventResult` with processing result
 

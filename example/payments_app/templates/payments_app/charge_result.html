@@ -7,7 +7,9 @@
     <div style="font-size: 3rem; margin-bottom: 1rem;">
         {% if result.status == 'success' %}✅{% else %}❌{% endif %}
     </div>
-    <h2 style="margin-bottom: 0.5rem;">Payment {{ result.status|title }}</h2>
+    <h2 style="margin-bottom: 0.5rem;">
+        {% if result.status == 'success' %}Payment successful{% elif result.status == 'pending' %}Payment pending{% else %}Payment failed{% endif %}
+    </h2>
     <p>{{ result.message|default:"The transaction was processed by the gateway provider." }}</p>
     
     {% if result.transaction_id %}

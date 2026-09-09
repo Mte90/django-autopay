@@ -190,16 +190,16 @@ result = Payments.process_webhook("paypal", raw_body, headers, "application/json
 
 ### Mollie Events
 
-Mollie sends form-encoded webhooks with status in the payload:
+Mollie sends form-encoded webhooks. The payload contains only the payment `id`; the current status is fetched from the Mollie API:
 
-| Status | Action |
-|--------|--------|
-| `paid` | `status_update` — Charge succeeded |
-| `pending` | `status_update` — Awaiting confirmation |
-| `open` | `status_update` — Payment started (Mandate) |
-| `failed` | `status_update` — Charge failed |
-| `canceled` | `status_update` — Charge canceled |
-| `expired` | `status_update` — Charge expired |
+| Mollie Status | ChargeStatus | Action |
+|--------------|--------------|--------|
+| `paid` | CONFIRMED | `status_update` — Charge succeeded |
+| `pending` | PENDING | `status_update` — Awaiting confirmation |
+| `open` | PENDING | `status_update` — Payment started (Mandate) |
+| `failed` | FAILED | `status_update` — Charge failed |
+| `canceled` | FAILED | `status_update` — Charge canceled |
+| `expired` | FAILED | `status_update` — Charge expired |
 
 Example:
 
@@ -207,6 +207,14 @@ Example:
 # Mollie webhook payload (form-encoded)
 result = Payments.process_webhook("mollie", raw_body, headers, "application/x-www-form-urlencoded")
 ```
+
+### Choosing a webhook endpoint
+
+Use the Django view (`autopay/core/views.py`) when:
+- `AUTOPAY_MOLLIE_ALLOWED_IPS` is set — the view supplies `request.META["REMOTE_ADDR"]` for the fail-closed IP allowlist
+- Your provider posts form-encoded bodies (Mollie)
+
+The bolt endpoint (`/autopay/api/webhooks/{variant}/`) is a JSON-only adapter that cannot supply a client IP address. Use it only for providers that send JSON bodies and support signature verification.
 
 ## Error Handling
 

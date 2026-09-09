@@ -87,17 +87,8 @@ from autopay.core.facade import Payments
 
 # After user completes on-session payment
 saved_method = Payments.save_method(payment)
-
-# Persist to your database
-SavedPaymentMethod.objects.create(
-    user=user,
-    gateway="mollie",
-    gateway_customer_id=saved_method.gateway_customer_id,
-    gateway_method_id=saved_method.gateway_method_id,  # mandate ID
-    method_type=saved_method.method_type,
-    display_label=saved_method.display_label,
-    metadata=saved_method.metadata,
-)
+# The facade persists the SavedPaymentMethod row automatically.
+# saved_method is a SavedMethod value object with gateway data.
 ```
 
 ### Refresh Flow
@@ -183,10 +174,9 @@ Mollie sends webhooks for payment status changes:
 |--------------|--------------|
 | `paid` | CONFIRMED |
 | `failed` | FAILED |
-| `refunded` | REFUNDED |
 | `canceled` | FAILED |
 
-**Note:** Mollie does not use event types like Stripe. The webhook payload contains the current `status` field.
+**Note:** Mollie does not use event types like Stripe. The webhook payload contains only the payment `id`; the current status is fetched from the Mollie API.
 
 ### Deduplication Strategy
 

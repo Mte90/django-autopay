@@ -319,6 +319,7 @@ class TestConfirmRefresh:
             # Verify that saved_method was updated
             sm.refresh_from_db()
             assert sm.gateway_method_id == "pm_new123"
+            assert sm.last_refreshed_at is not None
 
     @pytest.mark.django_db
     def test_confirm_refresh_race_guard_prevents_double_write(

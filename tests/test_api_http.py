@@ -518,6 +518,37 @@ class TestConfirmRefreshGet:
         assert out.error == "invalid signature"
 
     @pytest.mark.django_db(transaction=True)
+    async def test_secret_configured_requires_signed_attempt(self, django_user_model, settings):
+        """With a secret configured the HMAC signature is mandatory: an unsigned
+        call (attempt omitted) must not reach the method lookup."""
+        user = await make_user(django_user_model)
+        sm = await make_method(user)
+        settings.AUTOPAY_WEBHOOK_SECRET = "sekrit"
+
+        out = await bolt.confirm_refresh_get(
+            FakeRequest(user=user), method_id=sm.id, first_payment_id="tr_1", attempt=0, sig=""
+        )
+
+        assert out.success is False
+        assert out.error == "invalid signature"
+
+    @pytest.mark.django_db(transaction=True)
+    async def test_valid_attempt_signature_succeeds(self, monkeypatch, django_user_model, settings):
+        user = await make_user(django_user_model)
+        sm = await make_method(user)
+        settings.AUTOPAY_WEBHOOK_SECRET = "sekrit"
+        attempt_id = 5
+        sig = hmac.new(b"sekrit", f"{attempt_id}:{sm.id}".encode(), hashlib.sha256).hexdigest()
+        monkeypatch.setattr(f"{MODULE}.Payments.confirm_refresh", lambda m, p: m)
+
+        out = await bolt.confirm_refresh_get(
+            FakeRequest(user=user), method_id=sm.id, first_payment_id="tr_2", attempt=attempt_id, sig=sig
+        )
+
+        assert out.success is True
+        assert out.method_id == sm.id
+
+    @pytest.mark.django_db(transaction=True)
     async def test_returns_refresh_status_out_struct(self, monkeypatch, django_user_model):
         """Return type: confirm_refresh_get returns RefreshStatusOut, not dict."""
         from autopay.api.schemas import RefreshStatusOut
@@ -726,18 +757,41 @@ class TestWebhookReceiver:
         assert out.event_id is None
 
     @pytest.mark.django_db(transaction=True)
-    async def test_dispatches_to_facade(self, monkeypatch):
+    async def test_dispatches_to_facade_with_raw_bytes(self, monkeypatch):
+        """The facade contract is raw bytes + content type, never a parsed dict."""
         req = FakeRequest(
-            headers={"stripe-signature": "sig"},
+            headers={"stripe-signature": "sig", "content-type": "application/json"},
             body=json.dumps({"id": "evt_1", "type": "x"}).encode(),
         )
-        result = SimpleNamespace(processed=True, event_id="stripe:evt_1")
-        monkeypatch.setattr(f"{MODULE}.Payments.process_webhook", lambda v, p, h: result)
+        captured = {}
+
+        def fake_process(variant, raw_body, headers, content_type="", client_ip=""):
+            captured["raw_body"] = raw_body
+            captured["content_type"] = content_type
+            return SimpleNamespace(processed=True, event_id="stripe:evt_1")
+
+        monkeypatch.setattr(f"{MODULE}.Payments.process_webhook", fake_process)
 
         out = await bolt.webhook_receiver(req, variant="stripe")
 
         assert out.processed is True
         assert out.event_id == "stripe:evt_1"
+        assert isinstance(captured["raw_body"], bytes)
+        assert captured["raw_body"] == json.dumps({"id": "evt_1", "type": "x"}).encode()
+        assert captured["content_type"] == "application/json"
+
+    @pytest.mark.django_db(transaction=True)
+    async def test_end_to_end_unknown_event_via_facade(self):
+        """No mocks: raw bytes flow through the real facade, dedup and dispatch."""
+        req = FakeRequest(
+            headers={"content-type": "application/json"},
+            body=json.dumps({"id": f"evt_{uuid4().hex[:12]}", "type": "unknown.event"}).encode(),
+        )
+
+        out = await bolt.webhook_receiver(req, variant="dummy")
+
+        assert out.processed is False
+        assert out.event_id.startswith("evt_")
 
 
 class TestVerifyAttemptSignature:

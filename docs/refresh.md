@@ -8,7 +8,7 @@ Call `refresh_method()` when:
 
 1. `charge_off_session()` returns `REJECTED` — Token revoked
 2. `charge_off_session()` returns `REQUIRES_SCA` persistently — Mandate no longer covered
-3. Webhook `VAULT.PAYMENT-TOKEN.DELETED` received — Deactivates saved method (action: `revoke`)
+3. Webhook `VAULT.PAYMENT-TOKEN.DELETED` received — Deactivates saved method (action: `revoke_method`)
 4. Scheduled job — Proactive refresh before card expiry
 
 ## The Refresh Flow

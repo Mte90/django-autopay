@@ -587,6 +587,58 @@ class TestFacadeSaveMethod:
                 assert sm.user_id == user.id
 
     @pytest.mark.django_db
+    def test_save_method_uses_configured_model(self, monkeypatch, django_user_model):
+        """save_method persists through _get_saved_method_model, honoring
+        AUTOPAY_SAVED_METHOD_MODEL (previously the setting was a no-op)."""
+        from autopay.models import SavedPaymentMethod
+
+        user = django_user_model.objects.create_user(
+            username="save_method_configured_model", password="x"
+        )
+        created_kwargs = {}
+
+        class FakeManager:
+            @staticmethod
+            def create(**kwargs):
+                created_kwargs.update(kwargs)
+                return SavedPaymentMethod.objects.create(**kwargs)
+
+        class ConfigurableModel:
+            objects = FakeManager()
+
+        monkeypatch.setattr(
+            "autopay.core.models._get_saved_method_model", lambda: ConfigurableModel
+        )
+
+        class CapableProvider(AutopayProvider):
+            SUPPORTS_OFF_SESSION_CHARGE = True
+            SUPPORTS_SAVE_METHOD = True
+
+            def save_method(self, payment):
+                return SavedMethod(
+                    gateway="dummy",
+                    gateway_customer_id="cust_cfg",
+                    gateway_method_id="pm_cfg",
+                    method_type="card",
+                    display_label="Configured Model",
+                )
+
+        with patch("autopay.core.facade.provider_factory") as mock_factory:
+            mock_factory.return_value = CapableProvider()
+
+            result = Payments.save_method(
+                type(
+                    "FakePayment",
+                    (),
+                    {"variant": "dummy", "user": user, "user_id": user.id},
+                )()
+            )
+
+        assert result is not None
+        assert created_kwargs["gateway_method_id"] == "pm_cfg"
+        assert created_kwargs["user"] == user
+
+    @pytest.mark.django_db
     def test_save_method_provider_returns_none(self, django_user_model):
         """Test save_method returns None when provider.save_method returns None."""
         user = django_user_model.objects.create_user(

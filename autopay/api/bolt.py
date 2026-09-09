@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
-import json
+from typing import TYPE_CHECKING
 
 from asgiref.sync import sync_to_async
 from django.conf import settings
@@ -19,7 +19,7 @@ from autopay.core.facade import Payments
 from autopay.core.models import (
     ChargeRecord,
     RefreshAttempt,
-    SavedPaymentMethod,
+    _get_saved_method_model,
 )
 
 from .schemas import (
@@ -40,6 +40,8 @@ from .schemas import (
 
 api = BoltAPI()
 
+if TYPE_CHECKING:
+    from autopay.core.models import SavedPaymentMethod
 
 def _to_method_out(sm: SavedPaymentMethod) -> SavedMethodOut:
     """Converts SavedPaymentMethod to SavedMethodOut schema."""
@@ -59,10 +61,11 @@ def _to_method_out(sm: SavedPaymentMethod) -> SavedMethodOut:
 async def list_methods(request):
     """List saved methods for the authenticated user.
 
-    Reads ONLY from local DB — zero gateway calls (plan §604-621).
+    Reads ONLY from local DB — zero gateway calls.
     """
+    model = _get_saved_method_model()
     methods = [
-        method async for method in SavedPaymentMethod.objects.filter(
+        method async for method in model.objects.filter(
             user=request.user, is_active=True
         ).order_by("-is_default", "-created_at")
     ]
@@ -103,14 +106,14 @@ async def create_method(request, body: CreateMethodIn) -> CreateMethodOut:
 @api.get("/autopay/api/methods/{method_id}/", auth=[JWTAuthentication()], guards=[IsAuthenticated()])
 async def get_method(request, method_id: int) -> SavedMethodOut:
     """Get method details."""
-    sm = await SavedPaymentMethod.objects.aget(id=method_id, user=request.user)
+    sm = await _get_saved_method_model().objects.aget(id=method_id, user=request.user)
     return _to_method_out(sm)
 
 
 @api.delete("/autopay/api/methods/{method_id}/", auth=[JWTAuthentication()], guards=[IsAuthenticated()])
 async def revoke_method(request, method_id: int) -> DeleteMethodOut:
     """Revoke method."""
-    sm = await SavedPaymentMethod.objects.aget(id=method_id, user=request.user)
+    sm = await _get_saved_method_model().objects.aget(id=method_id, user=request.user)
     await sync_to_async(Payments.revoke_method)(sm.as_saved_method())
     sm.is_active = False
     await sm.asave()
@@ -125,7 +128,8 @@ async def validate_method(request, method_id: int) -> ValidationResultOut:
     Updates last_validated_at / last_validation_is_valid / last_validation_reason
     on the SavedPaymentMethod.
     """
-    sm = await SavedPaymentMethod.objects.aget(id=method_id, user=request.user)
+    model = _get_saved_method_model()
+    sm = await model.objects.aget(id=method_id, user=request.user)
     if not sm.is_active:
         return ValidationResultOut(
             is_valid=False,
@@ -140,7 +144,7 @@ async def validate_method(request, method_id: int) -> ValidationResultOut:
     result = await sync_to_async(Payments.validate_method)(sm.as_saved_method())
 
     # Persist for history + UI
-    await SavedPaymentMethod.objects.filter(pk=method_id).aupdate(
+    await model.objects.filter(pk=method_id).aupdate(
         last_validated_at=result.checked_at,
         last_validation_is_valid=result.is_valid,
         last_validation_reason=result.reason[:255],
@@ -164,9 +168,10 @@ async def validate_all_my_methods(request) -> list[ValidationResultOut]:
     Useful as "Update method status" endpoint in the user panel.
     """
     results = []
-    async for sm in SavedPaymentMethod.objects.filter(user=request.user, is_active=True):
+    model = _get_saved_method_model()
+    async for sm in model.objects.filter(user=request.user, is_active=True):
         result = await sync_to_async(Payments.validate_method)(sm.as_saved_method())
-        await SavedPaymentMethod.objects.filter(pk=sm.pk).aupdate(
+        await model.objects.filter(pk=sm.pk).aupdate(
             last_validated_at=result.checked_at,
             last_validation_is_valid=result.is_valid,
             last_validation_reason=result.reason[:255],
@@ -185,8 +190,8 @@ async def validate_all_my_methods(request) -> list[ValidationResultOut]:
 
 @api.post("/autopay/api/methods/{method_id}/refresh/", auth=[JWTAuthentication()], guards=[IsAuthenticated()])
 async def refresh_method(request, method_id: int, body: RefreshMethodIn) -> RefreshMethodOut:
-    """Start a new setup flow to regenerate the token. See section 9."""
-    sm = await SavedPaymentMethod.objects.aget(id=method_id, user=request.user)
+    """Start a new setup flow to regenerate the token."""
+    sm = await _get_saved_method_model().objects.aget(id=method_id, user=request.user)
     if not sm.is_active:
         return RefreshMethodOut(setup_id=0, frontend_sdk="", frontend_payload={}, expires_at="", return_url="")
 
@@ -233,7 +238,8 @@ async def confirm_refresh_post(request, method_id: int, body: ConfirmRefreshIn) 
     - Stripe: {setup_intent_id}
     - Mollie: (via query string) ?first_payment_id=xxx
     """
-    sm = await SavedPaymentMethod.objects.aget(id=method_id, user=request.user)
+    model = _get_saved_method_model()
+    sm = await model.objects.aget(id=method_id, user=request.user)
 
     refresh_payload = {
         "setup_token_id": body.setup_token_id,
@@ -245,9 +251,9 @@ async def confirm_refresh_post(request, method_id: int, body: ConfirmRefreshIn) 
 
     try:
         await sync_to_async(Payments.confirm_refresh)(sm.as_saved_method(), refresh_payload)
-        sm = await SavedPaymentMethod.objects.aget(id=method_id)  # refresh from DB
+        sm = await model.objects.aget(id=method_id)  # refresh from DB
         return ConfirmRefreshOut(success=True, method=_to_method_out(sm), error=None)
-    except (SavedPaymentMethod.DoesNotExist, AutopayCapabilityError) as e:
+    except (model.DoesNotExist, AutopayCapabilityError) as e:
         return ConfirmRefreshOut(success=False, method=None, error=str(e))
 
 
@@ -257,13 +263,16 @@ async def confirm_refresh_get(request, method_id: int, first_payment_id: str = "
 
     Authenticates via signed attempt_id (HMAC) instead of JWT.
     """
-    # Verify attempt signature (if configured)
-    if attempt and not _verify_attempt_signature(attempt, method_id, sig):
+    # HMAC is the only auth here (no JWT): with a secret configured an
+    # unsigned or incomplete call is rejected.
+    secret = getattr(settings, "AUTOPAY_WEBHOOK_SECRET", "")
+    if (secret and not attempt) or (attempt and not _verify_attempt_signature(attempt, method_id, sig)):
         return RefreshStatusOut(success=False, method_id=None, error="invalid signature")
 
+    model = _get_saved_method_model()
     try:
-        sm = await SavedPaymentMethod.objects.aget(id=method_id)
-    except SavedPaymentMethod.DoesNotExist:
+        sm = await model.objects.aget(id=method_id)
+    except model.DoesNotExist:
         return RefreshStatusOut(success=False, method_id=None, error="method not found")
 
     refresh_payload = {"first_payment_id": first_payment_id} if first_payment_id else {}
@@ -271,7 +280,7 @@ async def confirm_refresh_get(request, method_id: int, first_payment_id: str = "
     try:
         await sync_to_async(Payments.confirm_refresh)(sm.as_saved_method(), refresh_payload)
         return RefreshStatusOut(success=True, method_id=method_id, error=None)
-    except (SavedPaymentMethod.DoesNotExist, AutopayCapabilityError) as e:
+    except (model.DoesNotExist, AutopayCapabilityError) as e:
         return RefreshStatusOut(success=False, method_id=None, error=str(e))
 
 
@@ -283,9 +292,10 @@ async def create_charge(request, body: ChargeIn) -> ChargeOut:
     instead of the user token. See section 12.7 for security.
     """
     # IDOR guard: saved method must belong to authenticated user
+    model = _get_saved_method_model()
     try:
-        sm = await SavedPaymentMethod.objects.aget(id=body.saved_method_id, is_active=True, user=request.user)
-    except SavedPaymentMethod.DoesNotExist:
+        sm = await model.objects.aget(id=body.saved_method_id, is_active=True, user=request.user)
+    except model.DoesNotExist:
         # Return 404 to avoid leaking whether the method exists
         return ChargeOut(
             status="failed",
@@ -379,13 +389,11 @@ async def webhook_receiver(request, variant: str):
     client IP, so IP-allowlist verification (Mollie) gets no client_ip here —
     use the Django webhook view when AUTOPAY_MOLLIE_ALLOWED_IPS is set.
     """
-    try:
-        payload = json.loads(await request.body())
-    except json.JSONDecodeError:
-        return WebhookReceiverOut(processed=False, event_id=None)
-
+    raw_body = await request.body()
     headers = {k: v for k, v in request.headers.items()}
-    result = await sync_to_async(Payments.process_webhook)(variant, payload, headers)
+    result = await sync_to_async(Payments.process_webhook)(
+        variant, raw_body, headers, headers.get("content-type", "")
+    )
 
     return WebhookReceiverOut(processed=result.processed, event_id=result.event_id)
 

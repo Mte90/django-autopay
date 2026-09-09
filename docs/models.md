@@ -76,7 +76,7 @@ Tracks refresh flow attempts for payment method renewal.
 | `gateway_setup_id` | CharField(128) | Setup token/intent ID from gateway |
 | `frontend_sdk` | CharField(32) | SDK used: "paypal" \| "stripe" \| "mollie" |
 | `frontend_payload` | JSONField | Gateway-specific frontend data |
-| `status` | CharField(16) | Status: pending \| confirmed \| expired \| failed |
+| `status` | CharField(16) | Status: pending \| in_progress \| confirmed \| expired \| failed |
 | `reason` | CharField(64) | Trigger: "expired_card" \| "revoked" \| "sca_required" \| "manual" |
 | `initiated_by` | ForeignKey | User who initiated the refresh (nullable) |
 | `created_at` | DateTimeField | Attempt creation timestamp |
