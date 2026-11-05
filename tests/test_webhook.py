@@ -8,11 +8,14 @@ Covers:
 - View e2e with test client
 """
 import json
+import logging
 import uuid
 
+import django.contrib.auth.models
 from django.test import Client, override_settings
 from django.urls import reverse
 
+from autopay.core import base, models
 from autopay.core.facade import Payments
 from autopay.core.models import ProcessedWebhookEvent
 
@@ -340,3 +343,249 @@ class TestWebhookBranchCoverage:
         )
         assert result.processed is False
         assert result.action == "ignored"
+
+
+class TestWebhookFacadeIntegration:
+    """Integration tests for new webhook functionality (signal emission + status updates)."""
+
+    def test_refund_action_marks_charge_refunded(
+        self, db, monkeypatch
+    ):
+        """Provider returns action='refund' → ChargeRecord.status updated to 'refunded'."""
+        from unittest.mock import MagicMock
+        from autopay.core.result import ChargeStatus, WebhookEventResult
+        from autopay.core.models import SavedPaymentMethod
+
+        # Create a ChargeRecord
+        user = django.contrib.auth.models.User.objects.create_user(
+            username="testuser1", password="testpass"
+        )
+        saved_method = SavedPaymentMethod.objects.create(
+            user=user,
+            gateway="dummy",
+            gateway_customer_id="cust_1",
+            gateway_method_id="method_1",
+            method_type="card",
+            display_label="Test Card",
+        )
+        charge = models.ChargeRecord.objects.create(
+            saved_method=saved_method,
+            amount=1000,  # 10.00 EUR
+            currency="EUR",
+            description="Test charge",
+            transaction_id="txn_1",
+            status=ChargeStatus.CONFIRMED,
+            message="Initial confirmation",
+            raw_response={},
+            idempotency_key="idem_1",
+        )
+        old_status = charge.status
+
+        # Mock provider to return refund action
+        provider = MagicMock(spec=base.AutopayProvider)
+        provider.SUPPORTS_WEBHOOK_VERIFICATION = False
+        provider.SUPPORTS_OFF_SESSION_CHARGE = True
+        provider.process_webhook_event = lambda event_type, payload: WebhookEventResult(
+            processed=True,
+            action="refund",
+            transaction_id="txn_1",
+        )
+        monkeypatch.setattr("autopay.core.facade.provider_factory", lambda v: provider)
+
+        # Process webhook
+        result = Payments.process_webhook(
+            "dummy",
+            json.dumps({"id": "evt_refund_1", "type": "charge.refunded"}).encode(),
+            {},
+            "application/json",
+        )
+
+        # Verify ChargeRecord was updated
+        charge.refresh_from_db()
+        assert charge.status == ChargeStatus.REFUNDED
+        assert charge.status != old_status
+
+    def test_capture_completed_updates_charge_status(
+        self, db, monkeypatch
+    ):
+        """Provider returns action='status_update' with new_status → ChargeRecord updated."""
+        from unittest.mock import MagicMock
+        from autopay.core.result import ChargeStatus, WebhookEventResult
+        from autopay.core.models import SavedPaymentMethod
+
+        # Create a ChargeRecord with PENDING status
+        user = django.contrib.auth.models.User.objects.create_user(
+            username="testuser2", password="testpass"
+        )
+        saved_method = SavedPaymentMethod.objects.create(
+            user=user,
+            gateway="dummy",
+            gateway_customer_id="cust_2",
+            gateway_method_id="method_2",
+            method_type="card",
+            display_label="Test Card 2",
+        )
+        charge = models.ChargeRecord.objects.create(
+            saved_method=saved_method,
+            amount=2000,  # 20.00 EUR
+            currency="EUR",
+            description="Test charge 2",
+            transaction_id="txn_2",
+            status=ChargeStatus.PENDING,
+            message="Pending status",
+            raw_response={},
+            idempotency_key="idem_2",
+        )
+        old_status = charge.status
+
+        # Mock provider to return status_update with new status
+        provider = MagicMock(spec=base.AutopayProvider)
+        provider.SUPPORTS_WEBHOOK_VERIFICATION = False
+        provider.SUPPORTS_OFF_SESSION_CHARGE = True
+        provider.process_webhook_event = lambda event_type, payload: WebhookEventResult(
+            processed=True,
+            action="status_update",
+            transaction_id="txn_2",
+            new_status=ChargeStatus.CONFIRMED,
+        )
+        monkeypatch.setattr("autopay.core.facade.provider_factory", lambda v: provider)
+
+        # Process webhook
+        result = Payments.process_webhook(
+            "dummy",
+            json.dumps({"id": "evt_status_2", "type": "charge.succeeded"}).encode(),
+            {},
+            "application/json",
+        )
+
+        # Verify ChargeRecord was updated to CONFIRMED
+        charge.refresh_from_db()
+        assert charge.status == ChargeStatus.CONFIRMED
+        assert charge.status != old_status
+
+    def test_webhook_processed_signal_emitted(
+        self, db, monkeypatch
+    ):
+        """webhook_processed signal is emitted after successful processing."""
+        from unittest.mock import MagicMock
+        from django.dispatch import receiver
+        from autopay.core.result import ChargeStatus, WebhookEventResult
+        from autopay.core.models import SavedPaymentMethod
+
+        # Received call kwargs
+        captured = []
+
+        def capture_receiver(sender, event_type, payload, result, **extra):
+            captured.append(
+                {
+                    "sender": sender,
+                    "event_type": event_type,
+                    "payload": payload,
+                    "result": result,
+                }
+            )
+
+        logger = logging.getLogger("autopay.fixture")
+        logger.setLevel(logging.DEBUG)
+
+        # Create a ChargeRecord to trigger update action
+        user = django.contrib.auth.models.User.objects.create_user(
+            username="testuser3", password="testpass"
+        )
+        saved_method = SavedPaymentMethod.objects.create(
+            user=user,
+            gateway="dummy",
+            gateway_customer_id="cust_3",
+            gateway_method_id="method_3",
+            method_type="card",
+            display_label="Test Card 3",
+        )
+        charge = models.ChargeRecord.objects.create(
+            saved_method=saved_method,
+            amount=1500,  # 15.00 EUR
+            currency="EUR",
+            description="Test charge 3",
+            transaction_id="txn_3",
+            status=ChargeStatus.PENDING,
+            message="Webhook test",
+            raw_response={},
+            idempotency_key="idem_3",
+        )
+
+        # Mock provider
+        provider = MagicMock(spec=base.AutopayProvider)
+        provider.SUPPORTS_WEBHOOK_VERIFICATION = False
+        provider.SUPPORTS_OFF_SESSION_CHARGE = True
+        provider.process_webhook_event = lambda event_type, payload: WebhookEventResult(
+            processed=True,
+            action="status_update",
+            transaction_id="txn_3",
+        )
+        monkeypatch.setattr("autopay.core.facade.provider_factory", lambda v: provider)
+
+        # Connect signal receiver
+        from autopay.core.signals import webhook_processed
+        webhook_processed.connect(capture_receiver)
+
+        # Process webhook
+        result = Payments.process_webhook(
+            "dummy",
+            json.dumps({"id": "evt_signal_3", "type": "charge.succeeded", "transaction_id": "txn_3"}).encode(),
+            {},
+            "application/json",
+        )
+
+        # Verify signal was emitted with correct params
+        assert len(captured) == 1
+        assert captured[0]["sender"] == "dummy"
+        assert captured[0]["event_type"] == "charge.succeeded"
+        assert captured[0]["payload"]["id"] == "evt_signal_3"
+        assert captured[0]["result"].processed is True
+        assert captured[0]["result"].action == "status_update"
+        assert captured[0]["result"].transaction_id == "txn_3"
+
+        # Disconnect receiver
+        webhook_processed.disconnect(capture_receiver)
+
+    def test_webhook_processed_signal_not_emitted_on_unprocessed(
+        self, db, monkeypatch
+    ):
+        """Signal is NOT emitted when webhook fails to process."""
+        from unittest.mock import MagicMock
+        from autopay.core.result import WebhookEventResult
+
+        # Track if signal was emitted
+        captured = []
+
+        def capture_receiver(sender, event_type, payload, result, **extra):
+            captured.append({"sender": sender, "event_type": event_type})
+
+        # Mock provider to return unprocessed result
+        provider = MagicMock(spec=base.AutopayProvider)
+        provider.SUPPORTS_WEBHOOK_VERIFICATION = False
+        provider.SUPPORTS_OFF_SESSION_CHARGE = True
+        provider.process_webhook_event = lambda event_type, payload: WebhookEventResult(
+            processed=False,
+            action="ignored",
+            transaction_id=None,
+        )
+        monkeypatch.setattr("autopay.core.facade.provider_factory", lambda v: provider)
+
+        # Connect signal receiver
+        from autopay.core.signals import webhook_processed
+        webhook_processed.connect(capture_receiver)
+
+        # Process unknown event → should not emit signal
+        result = Payments.process_webhook(
+            "dummy",
+            json.dumps({"id": "evt_fail_sig", "type": "unknown.event"}).encode(),
+            {},
+            "application/json",
+        )
+
+        # Verify signal was NOT emitted
+        assert len(captured) == 0
+        assert result.processed is False
+
+        # Disconnect receiver
+        webhook_processed.disconnect(capture_receiver)

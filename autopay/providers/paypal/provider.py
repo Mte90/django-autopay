@@ -745,16 +745,89 @@ class PaypalAutopayProvider(AutopayProvider):
         return resp.json().get("verification_status") == "SUCCESS"
 
     def process_webhook_event(self, event_type: str, payload: dict) -> WebhookEventResult | None:
-        """Handler for PayPal webhook events."""
+        """Handler for PayPal webhook events.
+
+        Maps PayPal webhook events to autopay actions:
+          - PAYMENT.CAPTURE.COMPLETED         -> status_update -> CONFIRMED
+          - PAYMENT.SALE.COMPLETED            -> status_update -> CONFIRMED (legacy)
+          - PAYMENT.CAPTURE.DENIED/FAILED     -> status_update -> FAILED
+          - PAYMENT.SALE.DENIED/FAILED        -> status_update -> FAILED (legacy)
+          - PAYMENT.CAPTURE.REFUNDED/REVERSED -> refund
+          - PAYMENT.SALE.REFUNDED/REVERSED    -> refund (legacy)
+          - VAULT.PAYMENT-TOKEN.DELETED       -> revoke_method
+          - BILLING.SUBSCRIPTION.*            -> ignored (dispatched via webhook_processed signal)
+        """
+        resource = payload.get("resource", {})
+
         if event_type == "PAYMENT.CAPTURE.COMPLETED":
             return WebhookEventResult(
-                processed=True, action="noop", transaction_id=payload.get("resource", {}).get("id")
+                processed=True,
+                action="status_update",
+                transaction_id=self._extract_order_id(payload),
+                new_status=ChargeStatus.CONFIRMED,
             )
-        elif event_type == "VAULT.PAYMENT-TOKEN.DELETED":
-            token_id = payload.get("resource", {}).get("id")
-            return WebhookEventResult(processed=True, action="revoke_method", transaction_id=token_id)
+        elif event_type == "PAYMENT.SALE.COMPLETED":
+            return WebhookEventResult(
+                processed=True,
+                action="status_update",
+                transaction_id=resource.get("parent_payment") or resource.get("id"),
+                new_status=ChargeStatus.CONFIRMED,
+            )
+        elif event_type in ("PAYMENT.CAPTURE.DENIED", "PAYMENT.CAPTURE.FAILED"):
+            return WebhookEventResult(
+                processed=True,
+                action="status_update",
+                transaction_id=self._extract_order_id(payload),
+                new_status=ChargeStatus.FAILED,
+            )
+        elif event_type in ("PAYMENT.SALE.DENIED", "PAYMENT.SALE.FAILED"):
+            return WebhookEventResult(
+                processed=True,
+                action="status_update",
+                transaction_id=resource.get("parent_payment") or resource.get("id"),
+                new_status=ChargeStatus.FAILED,
+            )
         elif event_type in ("PAYMENT.CAPTURE.REFUNDED", "PAYMENT.CAPTURE.REVERSED"):
             return WebhookEventResult(
-                processed=True, action="refund", transaction_id=payload.get("resource", {}).get("id")
+                processed=True,
+                action="refund",
+                transaction_id=self._extract_order_id(payload),
+            )
+        elif event_type in ("PAYMENT.SALE.REFUNDED", "PAYMENT.SALE.REVERSED"):
+            return WebhookEventResult(
+                processed=True,
+                action="refund",
+                transaction_id=resource.get("parent_payment") or resource.get("id"),
+            )
+        elif event_type == "VAULT.PAYMENT-TOKEN.DELETED":
+            token_id = resource.get("id")
+            return WebhookEventResult(
+                processed=True, action="revoke_method", transaction_id=token_id
+            )
+        elif event_type.startswith("BILLING.SUBSCRIPTION."):
+            return WebhookEventResult(
+                processed=True, action="ignored", transaction_id=None
             )
         return WebhookEventResult(processed=False, action="ignored", transaction_id=None)
+
+    @staticmethod
+    def _extract_order_id(payload: dict) -> str | None:
+        """Extract the Orders-v2 order ID from a PayPal webhook payload.
+
+        ChargeRecord.transaction_id stores the order ID returned by
+        charge_off_session, not the capture ID. The webhook resource.id is the
+        capture/sale/refund ID, so we read supplementary_data.related_ids.order_id.
+        For legacy SALE events, parent_payment is the closest match.
+        """
+        resource = payload.get("resource", {})
+        order_id = (
+            resource.get("supplementary_data", {})
+            .get("related_ids", {})
+            .get("order_id")
+        )
+        if order_id:
+            return order_id
+        parent_payment = resource.get("parent_payment")
+        if parent_payment:
+            return parent_payment
+        return resource.get("id")

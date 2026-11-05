@@ -13,6 +13,7 @@ from payments.core import provider_factory
 from .base import AutopayCapabilityError, AutopayProvider, is_autopay_capable
 from .result import (
     ChargeResult,
+    ChargeStatus,
     RefreshSetup,
     RefreshSetupData,
     ValidationResult,
@@ -436,12 +437,26 @@ class Payments:
                 if result is not None:
                     result.event_id = event_id
 
-                return result or WebhookEventResult(
+                final_result = result or WebhookEventResult(
                     processed=False,
                     action="ignored",
                     transaction_id=None,
                     event_id=event_id,
                 )
+
+            # Emit the webhook_processed signal outside the atomic block so
+            # receiver failures cannot roll back the persisted webhook and
+            # receiver DB writes are independent from the facade transaction.
+            if final_result.processed:
+                from .signals import webhook_processed
+
+                webhook_processed.send_robust(
+                    sender=variant,
+                    event_type=event_type,
+                    payload=payload,
+                    result=final_result,
+                )
+            return final_result
         except IntegrityError:
             # Already processed — return success without re-dispatch
             return WebhookEventResult(
@@ -561,3 +576,8 @@ def _apply_webhook_action(result: "WebhookEventResult") -> None:
         ChargeRecord.objects.filter(
             transaction_id=result.transaction_id
         ).update(status=result.new_status.value, updated_at=datetime.now(timezone.utc))
+    elif result.action == "refund" and result.transaction_id:
+        # Mark the original charge as refunded
+        ChargeRecord.objects.filter(
+            transaction_id=result.transaction_id
+        ).update(status=ChargeStatus.REFUNDED.value, updated_at=datetime.now(timezone.utc))

@@ -15,6 +15,7 @@ class ChargeStatus(str, Enum):
     FAILED = "failed"              # definitively failed, no retry needed
     REQUIRES_SCA = "requires_sca"  # needs 3DS, user must be on-session
     REJECTED = "rejected"          # mandate/token revoked, skip the method
+    REFUNDED = "refunded"          # charge fully reversed by merchant/gateway
 
 
 @dataclass

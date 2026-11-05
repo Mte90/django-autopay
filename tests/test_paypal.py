@@ -1406,13 +1406,17 @@ class TestPayPalWebhook:
         """Process PAYMENT.CAPTURE.COMPLETED event."""
         payload = {
             "event_type": "PAYMENT.CAPTURE.COMPLETED",
-            "resource": {"id": "sale_123"},
+            "resource": {
+                "id": "sale_123",
+                "supplementary_data": {"related_ids": {"order_id": "sale_123"}},
+            },
         }
 
         result = paypal_provider.process_webhook_event("PAYMENT.CAPTURE.COMPLETED", payload)
 
         assert result.processed is True
-        assert result.action == "noop"
+        assert result.action == "status_update"
+        assert result.new_status is ChargeStatus.CONFIRMED
         assert result.transaction_id == "sale_123"
 
     def test_process_webhook_event_token_revoked(self, paypal_provider):
@@ -1463,6 +1467,173 @@ class TestPayPalWebhook:
         assert result.processed is False
         assert result.action == "ignored"
         assert result.transaction_id is None
+
+    def test_process_webhook_event_capture_completed_with_order_id(self, paypal_provider):
+        """Process PAYMENT.CAPTURE.COMPLETED with order_id in supplementary_data."""
+        payload = {
+            "event_type": "PAYMENT.CAPTURE.COMPLETED",
+            "resource": {
+                "id": "capture_xyz",
+                "supplementary_data": {"related_ids": {"order_id": "order_abc"}},
+            },
+        }
+
+        result = paypal_provider.process_webhook_event("PAYMENT.CAPTURE.COMPLETED", payload)
+
+        assert result.processed is True
+        assert result.action == "status_update"
+        assert result.new_status is ChargeStatus.CONFIRMED
+        assert result.transaction_id == "order_abc"
+
+    def test_process_webhook_event_sale_completed(self, paypal_provider):
+        """Process PAYMENT.SALE.COMPLETED event."""
+        payload = {
+            "event_type": "PAYMENT.SALE.COMPLETED",
+            "resource": {
+                "parent_payment": "sale_parent_1",
+                "id": "sale_1",
+            },
+        }
+
+        result = paypal_provider.process_webhook_event("PAYMENT.SALE.COMPLETED", payload)
+
+        assert result.processed is True
+        assert result.action == "status_update"
+        assert result.new_status is ChargeStatus.CONFIRMED
+        assert result.transaction_id == "sale_parent_1"
+
+    def test_process_webhook_event_capture_denied(self, paypal_provider):
+        """Process PAYMENT.CAPTURE.DENIED event."""
+        payload = {
+            "event_type": "PAYMENT.CAPTURE.DENIED",
+            "resource": {"id": "cap_1"},
+        }
+
+        result = paypal_provider.process_webhook_event("PAYMENT.CAPTURE.DENIED", payload)
+
+        assert result.processed is True
+        assert result.action == "status_update"
+        assert result.new_status is ChargeStatus.FAILED
+        assert result.transaction_id == "cap_1"
+
+    def test_process_webhook_event_capture_failed(self, paypal_provider):
+        """Process PAYMENT.CAPTURE.FAILED event."""
+        payload = {
+            "event_type": "PAYMENT.CAPTURE.FAILED",
+            "resource": {"id": "cap_2"},
+        }
+
+        result = paypal_provider.process_webhook_event("PAYMENT.CAPTURE.FAILED", payload)
+
+        assert result.processed is True
+        assert result.action == "status_update"
+        assert result.new_status is ChargeStatus.FAILED
+        assert result.transaction_id == "cap_2"
+
+    def test_process_webhook_event_sale_denied(self, paypal_provider):
+        """Process PAYMENT.SALE.DENIED event."""
+        payload = {
+            "event_type": "PAYMENT.SALE.DENIED",
+            "resource": {
+                "parent_payment": "p1",
+                "id": "s1",
+            },
+        }
+
+        result = paypal_provider.process_webhook_event("PAYMENT.SALE.DENIED", payload)
+
+        assert result.processed is True
+        assert result.action == "status_update"
+        assert result.new_status is ChargeStatus.FAILED
+        assert result.transaction_id == "p1"
+
+    def test_process_webhook_event_sale_refunded(self, paypal_provider):
+        """Process PAYMENT.SALE.REFUNDED event."""
+        payload = {
+            "event_type": "PAYMENT.SALE.REFUNDED",
+            "resource": {
+                "parent_payment": "p2",
+                "id": "s2",
+            },
+        }
+
+        result = paypal_provider.process_webhook_event("PAYMENT.SALE.REFUNDED", payload)
+
+        assert result.processed is True
+        assert result.action == "refund"
+        assert result.transaction_id == "p2"
+
+    def test_process_webhook_event_subscription_activated(self, paypal_provider):
+        """Process BILLING.SUBSCRIPTION.ACTIVATED event (subscription events should be ignored)."""
+        payload = {
+            "event_type": "BILLING.SUBSCRIPTION.ACTIVATED",
+            "resource": {"id": "sub_1"},
+        }
+
+        result = paypal_provider.process_webhook_event("BILLING.SUBSCRIPTION.ACTIVATED", payload)
+
+        assert result.processed is True
+        assert result.action == "ignored"
+        assert result.transaction_id is None
+
+    def test_process_webhook_event_subscription_cancelled(self, paypal_provider):
+        """Process BILLING.SUBSCRIPTION.CANCELLED event (subscription events should be ignored)."""
+        payload = {
+            "event_type": "BILLING.SUBSCRIPTION.CANCELLED",
+            "resource": {"id": "sub_2"},
+        }
+
+        result = paypal_provider.process_webhook_event("BILLING.SUBSCRIPTION.CANCELLED", payload)
+
+        assert result.processed is True
+        assert result.action == "ignored"
+        assert result.transaction_id is None
+
+    def test_process_webhook_event_subscription_expired(self, paypal_provider):
+        """Process BILLING.SUBSCRIPTION.EXPIRED event (subscription events should be ignored)."""
+        payload = {
+            "event_type": "BILLING.SUBSCRIPTION.EXPIRED",
+            "resource": {"id": "sub_3"},
+        }
+
+        result = paypal_provider.process_webhook_event("BILLING.SUBSCRIPTION.EXPIRED", payload)
+
+        assert result.processed is True
+        assert result.action == "ignored"
+        assert result.transaction_id is None
+
+    def test_extract_order_id_uses_supplementary_data(self, paypal_provider):
+        """_extract_order_id returns order_id from supplementary_data.related_ids."""
+        payload = {
+            "resource": {
+                "id": "cap",
+                "supplementary_data": {"related_ids": {"order_id": "order_99"}},
+            },
+        }
+
+        order_id = paypal_provider._extract_order_id(payload)
+        assert order_id == "order_99"
+
+    def test_extract_order_id_falls_back_to_parent_payment(self, paypal_provider):
+        """_extract_order_id falls back to parent_payment when no supplementary_data."""
+        payload = {
+            "resource": {
+                "id": "cap",
+                "parent_payment": "parent_5",
+            },
+        }
+
+        order_id = paypal_provider._extract_order_id(payload)
+        assert order_id == "parent_5"
+
+    def test_extract_order_id_falls_back_to_resource_id(self, paypal_provider):
+        """_extract_order_id falls back to resource.id when no supplementary_data or parent_payment."""
+        payload = {
+            "resource": {"id": "cap_only"},
+        }
+
+        order_id = paypal_provider._extract_order_id(payload)
+        assert order_id == "cap_only"
 
     @responses.activate
     def test_confirm_refresh_unknown_source_type(self, paypal_provider, saved_method):
